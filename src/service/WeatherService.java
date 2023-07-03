@@ -13,21 +13,24 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
 public class WeatherService {
 
+    private static final Integer NUM_PROCESSORS = Runtime.getRuntime().availableProcessors();
     private static final Long POPULATION = 50000L;
     private final WeatherAPI weatherAPI;
     private final CityFilter cityFilter;
     private final AggregatorFactory aggregatorFactory;
+    private final ExecutorServiceManager executorServiceManager;
 
-    public WeatherService(WeatherAPI weatherAPI, CityFilter cityFilter, AggregatorFactory aggregatorFactory) {
+
+    public WeatherService(WeatherAPI weatherAPI, CityFilter cityFilter, AggregatorFactory aggregatorFactory, ExecutorServiceManager executorServiceManager) {
         this.weatherAPI = weatherAPI;
         this.cityFilter = cityFilter;
         this.aggregatorFactory = aggregatorFactory;
+        this.executorServiceManager = executorServiceManager;
     }
 
     public List<CityAggregatedWeather> getTopCitiesByAggregatedTemperatureAndFilteredPopulation(Set<String> cityIds, AggregationType aggregationType, Integer topCitiesAmount) {
@@ -98,7 +101,7 @@ public class WeatherService {
     }
 
     private List<Future<CityDailyTemps>> retrieveTemperaturesInParallel(List<City> cities) {
-        ExecutorService executor = Executors.newCachedThreadPool();
+        ExecutorService executor = executorServiceManager.createFixedThreadPool(NUM_PROCESSORS * 3);
         List<Future<CityDailyTemps>> futureCitiesDailyTemps = new ArrayList<>();
 
         for (City city : cities) {

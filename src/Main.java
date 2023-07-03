@@ -1,4 +1,5 @@
 import dto.CityAggregatedWeather;
+import service.ExecutorServiceManager;
 import service.WeatherAPIImpl;
 import service.WeatherService;
 import service.aggregator.AggregationType;
@@ -77,7 +78,7 @@ public class Main {
             idSet.add(id);
         }
 
-        WeatherService weatherService = new WeatherService(new WeatherAPIImpl(), new CityFilter(), new AggregatorFactory());
+        WeatherService weatherService = new WeatherService(new WeatherAPIImpl(), new CityFilter(), new AggregatorFactory(), new ExecutorServiceManager());
         List<CityAggregatedWeather> a = weatherService.getTopCitiesByAggregatedTemperatureAndFilteredPopulation(idSet, AggregationType.MAX, 3);
         System.out.println(a);
     }
