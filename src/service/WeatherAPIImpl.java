@@ -1,27 +1,18 @@
 package service;
 
-import entity.City;
-import entity.DailyTemp;
+import dto.City;
+import dto.DailyTemp;
 
 import java.util.*;
 import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class WeatherAPIImpl implements WeatherAPI{
-
-    Lock lock;
-    /*public WeatherAPIImpl(Lock lock) {
-        this.lock = lock;
-    }*/
 
     @Override
     public Set<City> getAllCitiesByIds(Set<String> cityIds) {
         Set<City> cities = new HashSet<>();
 
         Random random = new Random();
-        //String[] ids = {"ID1", "ID2", "ID3", "ID4", "ID5"}; // Example array of IDs
-        //String[] names = {"City1", "City2", "City3", "City4", "City5"}; // Example array of names
-
         for (int i = 0; i < 100; i++) {
             String randomId = String.valueOf(i);
             String randomName = "City" + String.valueOf(i); //names[random.nextInt(names.length)];
@@ -62,6 +53,8 @@ public class WeatherAPIImpl implements WeatherAPI{
         }
         //lock.unlock();
         return dailyTemps;*/
-        return Arrays.asList(new DailyTemp( new GregorianCalendar().getTime(), -10L));
+        Random random = new Random();
+        double randomNumber = random.nextDouble() * 100.0 - 50.0;
+        return Arrays.asList(new DailyTemp( new GregorianCalendar().getTime(), randomNumber));
     }
 }

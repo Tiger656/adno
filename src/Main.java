@@ -1,15 +1,17 @@
-import entity.CityAggTemperature;
+import dto.CityAggregatedWeather;
 import service.WeatherAPIImpl;
 import service.WeatherService;
 import service.aggregator.AggregationType;
+import service.aggregator.AggregatorFactory;
 import service.filter.CityFilter;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 public class Main {
 
-    public static void main(String[] args) throws InterruptedException {
+    public static void main(String[] args) {
        /* threadLocal.set("Main Hello World"); WILL BE REMOVED
         Thread one = new ThreadOne();
         Thread two = new ThreadTwo();
@@ -75,8 +77,9 @@ public class Main {
             idSet.add(id);
         }
 
-        WeatherService weatherService = new WeatherService(new WeatherAPIImpl(), new CityFilter());
-        Set<CityAggTemperature> a = weatherService.calculateAggregatedTempForCitiesForLastYear(idSet, AggregationType.MAX);
+        WeatherService weatherService = new WeatherService(new WeatherAPIImpl(), new CityFilter(), new AggregatorFactory());
+        List<CityAggregatedWeather> a = weatherService.getTopCitiesByAggregatedTemperatureAndFilteredPopulation(idSet, AggregationType.MAX, 3);
+        System.out.println(a);
     }
 }
 

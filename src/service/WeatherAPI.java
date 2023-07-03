@@ -1,7 +1,7 @@
 package service;
 
-import entity.City;
-import entity.DailyTemp;
+import dto.City;
+import dto.DailyTemp;
 
 import java.util.List;
 import java.util.Set;

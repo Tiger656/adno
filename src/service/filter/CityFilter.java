@@ -1,6 +1,6 @@
 package service.filter;
 
-import entity.City;
+import dto.City;
 
 import java.util.Set;
 import java.util.stream.Collectors;

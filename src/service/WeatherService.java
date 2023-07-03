@@ -1,96 +1,115 @@
 package service;
 
-import entity.CityAggTemperature;
-import entity.City;
-import entity.DailyTemp;
-import org.apache.commons.lang3.time.StopWatch;
+import dto.City;
+import dto.CityAggregatedWeather;
+import dto.DailyTemp;
 import service.aggregator.AggregationType;
 import service.aggregator.Aggregator;
 import service.aggregator.AggregatorFactory;
 import service.filter.CityFilter;
-
-import java.util.*;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.TimeUnit;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
 public class WeatherService {
 
     private static final Long POPULATION = 50000L;
-    private static final Integer NUM_OF_THREADS = Runtime.getRuntime().availableProcessors() - 1;
     private final WeatherAPI weatherAPI;
-    private final CityFilter cityFilter; //Maybe here should create interface?
+    private final CityFilter cityFilter;
+    private final AggregatorFactory aggregatorFactory;
 
-    public WeatherService(WeatherAPI weatherAPI, CityFilter cityFilter) {
+    public WeatherService(WeatherAPI weatherAPI, CityFilter cityFilter, AggregatorFactory aggregatorFactory) {
         this.weatherAPI = weatherAPI;
         this.cityFilter = cityFilter;
+        this.aggregatorFactory = aggregatorFactory;
     }
 
-    public Set<CityAggTemperature> calculateAggregatedTempForCitiesForLastYear(Set<String> cityIds, AggregationType aggregationType) {
+    public List<CityAggregatedWeather> getTopCitiesByAggregatedTemperatureAndFilteredPopulation(Set<String> cityIds, AggregationType aggregationType, Integer topCitiesAmount) {
         Set<City> cities = retrieveCities(cityIds);
         cities = cityFilter.filterCitiesByPopulationMoreThan(cities, POPULATION);
 
-        StopWatch stopWatch = new StopWatch(); //remove
-        stopWatch.start(); //remove
-        Map<String, List<DailyTemp>> dailyTempsByCities = retrieveYearDailyTemperatureForCities(cityIds);
-        stopWatch.stop(); //remove
-        System.out.println(stopWatch.getTime(TimeUnit.SECONDS)); //remove
+        List<CityDailyTemps> dailyTempsByCities = getCitiesDailyTempsForWholeYear(new ArrayList<>(cities));
 
-        /*ConcurrentMap<String, List<DailyTemp>> dailyTempsByCities = new ConcurrentHashMap<>();
-        StopWatch stopWatch = new StopWatch();
-        stopWatch.start();
-        cityIds.parallelStream().forEach(cityId -> {
-            try {
-                System.out.println("Thread name: " + Thread.currentThread().getName() + ", Attempt: " +  ". Start");  //remove
-                Thread.sleep(TimeUnit.SECONDS.toMillis(1)); //remove
-                System.out.println("Thread name: " + Thread.currentThread().getName() + ", Attempt: " +  ". Finish"); //remove
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-            dailyTempsByCities.put(cityId, weatherAPI.getLastYearTemperature(cityId));
-        });
-        stopWatch.stop();
-        System.out.println(stopWatch.getTime(TimeUnit.SECONDS));*/
+        List<CityAggregatedWeather> citiesAggregatedWeather = aggregateCitiesTemperatures(cities, dailyTempsByCities, aggregationType);
+        return getTopCities(citiesAggregatedWeather, topCitiesAmount);
 
-
-        return aggregateTemperaturesForCities(cities, dailyTempsByCities, aggregationType);
     }
 
-    private Set<CityAggTemperature> aggregateTemperaturesForCities(Set<City> cities, Map<String, List<DailyTemp>> dailyTempsByCities, AggregationType aggregationType) {
-        return cities.stream().map(city -> new CityAggTemperature(
-                city.getId(),
-                city.getName(),
-                city.getPopulation(),
-                aggregationType.toString(),
-                aggregateTemperature(
-                        convertToSimpleValues(dailyTempsByCities.get(city.getId())),
-                        aggregationType)
-        )).collect(Collectors.toSet());
+    private List<CityAggregatedWeather> getTopCities(List<CityAggregatedWeather> citiesAggregatedWeather, Integer top) {
+
+        citiesAggregatedWeather.sort((o1, o2) -> Double.compare(o1.getAggregatedTemperature(), o2.getAggregatedTemperature()) * -1);
+        return citiesAggregatedWeather.stream().limit(top).collect(Collectors.toList());
     }
 
-    private List<Double> convertToSimpleValues(List<DailyTemp> dailyTemps) {
-        if (Objects.nonNull(dailyTemps)) {
-            return dailyTemps.stream().map(DailyTemp::getTemperature).collect(Collectors.toList());
+    private List<CityAggregatedWeather> aggregateCitiesTemperatures(Set<City> cities, List<CityDailyTemps> dailyTempsByCities, AggregationType aggregationType) {
+        Map<String, CityDailyTemps> citiesDailyTempsMap =
+                dailyTempsByCities.stream().collect(Collectors.toMap(CityDailyTemps::cityId, value -> value));
+        List<CityAggregatedWeather> citiesAggregWeather = new ArrayList<>();
+
+        for (City city : cities) {
+            CityDailyTemps cityDailyTemps = citiesDailyTempsMap.get(city.getId());
+            List<Double> temps = unwrapDailyTemps(cityDailyTemps.dailyTemps());
+
+            citiesAggregWeather.add(new CityAggregatedWeather(
+                    city.getId(),
+                    city.getName(),
+                    city.getPopulation(),
+                    aggregationType.toString(),
+                    aggregateTemperature(temps, aggregationType)));
         }
-        return Collections.emptyList(); // Maybe I should improve my response?
+        return citiesAggregWeather;
     }
 
+    private List<Double> unwrapDailyTemps(List<DailyTemp> dailyTemps) {
+        return dailyTemps.stream().map(DailyTemp::getTemperature).collect(Collectors.toList());
+    }
 
     private Double aggregateTemperature(List<Double> values, AggregationType aggregationType) {
-        AggregatorFactory aggregatorFactory = new AggregatorFactory();
-        Aggregator aggregator;
         try {
-            aggregator = aggregatorFactory.createAggregator(aggregationType);
+            Aggregator aggregator = aggregatorFactory.createAggregator(aggregationType);
+            return aggregator.aggregate(values);
         } catch (Exception e) {
             //logging
             throw new RuntimeException(e); //throw NoSuchAggregatorException
         }
-        return aggregator.aggregate(values);
     }
 
-    private Map<String, List<DailyTemp>> retrieveYearDailyTemperatureForCities(Set<String> cityIds) {
-        ForkJoinPool forkJoinPool = new ForkJoinPool(NUM_OF_THREADS);
-        return forkJoinPool.invoke(new MyFork(weatherAPI, cityIds.stream().toList(), 0, cityIds.size() - 1));
+    private List<CityDailyTemps> getCitiesDailyTempsForWholeYear(List<City> cities) {
+        List<Future<CityDailyTemps>> futureCitiesDailyTemps = retrieveTemperaturesInParallel(cities);
+        return waitDailyTemperatures(futureCitiesDailyTemps);
+    }
+
+    private List<CityDailyTemps> waitDailyTemperatures(List<Future<CityDailyTemps>> futureCitiesDailyTemps) {
+        List<CityDailyTemps> cityDailyTemps = new ArrayList<>();
+        for (Future<CityDailyTemps> cityDailyTempsFuture : futureCitiesDailyTemps) {
+            try {
+                cityDailyTemps.add(cityDailyTempsFuture.get());
+            } catch (InterruptedException | ExecutionException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return cityDailyTemps;
+    }
+
+    private List<Future<CityDailyTemps>> retrieveTemperaturesInParallel(List<City> cities) {
+        ExecutorService executor = Executors.newCachedThreadPool();
+        List<Future<CityDailyTemps>> futureCitiesDailyTemps = new ArrayList<>();
+
+        for (City city : cities) {
+            Future<CityDailyTemps> future = executor.submit(() -> {
+                List<DailyTemp> dailyTemps = weatherAPI.getLastYearTemperature(city.getId());
+                return new CityDailyTemps(city.getId(), dailyTemps);
+            });
+            futureCitiesDailyTemps.add(future);
+        }
+        executor.shutdown();
+        return futureCitiesDailyTemps;
     }
 
     private Set<City> retrieveCities(Set<String> cityIds) {
